@@ -1,38 +1,43 @@
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 import instructor
+import time
 from dotenv import load_dotenv
+import asyncio
 import datetime as dt
 from models.DataModels import *
+import requests
 
 
 
-
-def openAIProcessing(content, dataModel):
+async def openAIProcessing(content, dataModel):
     print("Using OpenAI")
     load_dotenv()
-    client = instructor.from_openai(OpenAI())
-    response = client.chat.completions.create(
-        model='gpt-4o',
-        max_retries=10,
-        messages=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
-        response_model=dataModel
-    )
+    start = time.time()
+    client = instructor.from_openai(AsyncOpenAI())
+    try:
+        response = await client.chat.completions.create(
+            model='gpt-4o',
+            max_retries=10,
+            messages=[
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            response_model=dataModel
+        )
+    except Exception as e:
+        end = time.time()
+        duration = end - start
+        print(f"OpenAI's model gpt-4o failed to produce a response after {duration} s. Error: {e}")
+        return [], duration
+    end = time.time()
+    duration = end - start
     return response
 
-def ollamaProcessing(content, dataModel, ollamaModelIndex):
-    print("Using Ollama")
-
-    ollamaModels= {0:'llama2:latest',
-                   1:'llama3.2:latest',
-                   2:'deepseek-coder-v2:16b',
-                   3:'gemma3:12b',
-                   4:'gemma3:27b',
-                   5:'llama3.2:3b'}
+def ollamaProcessing(content, dataModel, ollamaModel):
+    print(ollamaModel)
+    start = time.time()
     client = instructor.from_openai(
         OpenAI(
             base_url='http://localhost:11434/v1',
@@ -40,38 +45,46 @@ def ollamaProcessing(content, dataModel, ollamaModelIndex):
         ),
         mode=instructor.Mode.JSON
     )
-    response = client.chat.completions.create(
-        model=ollamaModels[ollamaModelIndex],
-        max_retries=10,
-        messages=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
-        response_model=dataModel
-    )
-    return response
+    try:
+        response = client.chat.completions.create(
+            model=ollamaModel,
+            max_retries=10,
+            messages=[
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            response_model=dataModel
+        )
 
-def main():
+    except Exception as e:
+        end = time.time()
+        duration = end - start
+        print(f"Ollama model {ollamaModel} failed to produce a response after {duration} s.")
+        return [], duration
+    end = time.time()
+    duration = end - start
+    return response, duration
+
+async def main():
     print("App starting")
-    content = (f'Leonardo was born on April 4th 1990. Today is {dt.date.today()}.'
+    content1 = (f'Leonardo was born on April 4th 1990. Today is {dt.date.today()}.'
                f' Fill the data model based on this information.')
+    content2 = (f'I love Shutter Island. It is one of my favorite movies of all time.'
+                f' Recommend 5 more that are similar.')
 
 
-    # responseOpenAI = openAIProcessing(content,model)
-    # print("Response from OpenAI:\n", responseOpenAI)
+    for model in ollamaModels.values():
+        responseOllama, processing_time = ollamaProcessing(content=content2, dataModel=MovieResponseModel, ollamaModel=model)
+        if responseOllama:
+            print(f"Response using Ollama model {model} in {processing_time}s: {responseOllama}")
 
-    responseOllama = ollamaProcessing(content=content,dataModel=Caption,ollamaModelIndex=0)
-    print("Response from Ollama:\n",responseOllama)
-    responseOllama = ollamaProcessing(content=content, dataModel=Caption, ollamaModelIndex=1)
-    print("Response from Ollama:\n", responseOllama)
-    responseOllama = ollamaProcessing(content=content, dataModel=Caption, ollamaModelIndex=2)
-    print("Response from Ollama:\n", responseOllama)
+
 
 
 
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
